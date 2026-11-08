@@ -3,7 +3,7 @@ import { Beca } from '../entities/Beca';
 import { Estudiante } from '../entities/Estudiante';
 import { Reserva } from '../entities/Reserva';
 import { Turno } from '../entities/Turno';
-import { NoEncontradoError, ReglaDeNegocioError } from '../entities/errores';
+import { NoEncontradoError } from '../entities/errores';
 import { BecaRepo, EstudianteRepo, EventBusPort, ReservaRepo } from './ports';
 import { ResolverEstudianteUseCase } from './ResolverEstudiante';
 import { ReservarRacionUseCase } from './ReservarRacion';
@@ -52,20 +52,13 @@ describe('ReservarRacion', () => {
     expect(bus.eventos.map(e => e.type)).toEqual(['ReservaCreadaEvent']);
   });
 
-  it('una sola reserva por estudiante y por día', async () => {
-    const { reservar } = armar();
-    await reservar.execute(pedido('ana'));
-    await expect(reservar.execute(pedido('ana'))).rejects.toBeInstanceOf(ReglaDeNegocioError);
-    await expect(reservar.execute(pedido('ana'))).rejects.toThrow('Ya tenés una reserva para el 2026-11-09');
-  });
-
-  it('otro día sí se puede, y una reserva cancelada libera el día', async () => {
+  it('un estudiante puede reservar más de una ración el mismo día', async () => {
     const { reservar, reservas } = armar();
-    const primera = await reservar.execute(pedido('ana'));
-    await reservar.execute(pedido('ana', '2026-11-10'));
-    primera.cancelar();
-    await reservas.save(primera);
-    await expect(reservar.execute(pedido('ana', '2026-11-09'))).resolves.toBeDefined();
+    const a = await reservar.execute(pedido('ana'));
+    const b = await reservar.execute(pedido('ana'));
+    const c = await reservar.execute(pedido('ana', '2026-11-10'));
+    expect(new Set([a.id, b.id, c.id]).size).toBe(3);
+    expect((await reservas.findByEstudiante(a.estudianteId)).length).toBe(3);
   });
 
   it('un UUID que no existe es un error, no se inventa un estudiante', async () => {

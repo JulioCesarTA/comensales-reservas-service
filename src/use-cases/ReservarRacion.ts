@@ -4,7 +4,6 @@ import { ResolverEstudianteUseCase, esUuid } from './ResolverEstudiante';
 import { Reserva } from '../entities/Reserva';
 import { Estudiante } from '../entities/Estudiante';
 import { Turno } from '../entities/Turno';
-import { ReglaDeNegocioError } from '../entities/errores';
 
 /**
  * Paso 1 de la Saga 1: crea una reserva en estado `pendiente`.
@@ -40,14 +39,7 @@ export class ReservarRacionUseCase {
     const fecha = new Date(fechaRaw);
     if (isNaN(fecha.getTime())) throw new Error(`fecha inválida: ${input.fecha}`);
 
-    // Regla de negocio: una sola reserva activa por estudiante y por día.
-    const dia = fecha.toISOString().slice(0, 10);
-    const previas = await this.reservas.findByEstudiante(est.id);
-    const yaReservo = previas.some(r =>
-      r.estado !== 'cancelada' && new Date(r.fecha).toISOString().slice(0, 10) === dia);
-    if (yaReservo) {
-      throw new ReglaDeNegocioError(`Ya tenés una reserva para el ${dia}. Solo se permite una por día.`);
-    }
+    // Un estudiante puede reservar más de una ración por día (p. ej. almuerzo para él y para un compañero, o varios turnos).
 
     const saved = await this.reservas.save(
       new Reserva(uuid(), est.id, input.menuId, input.platoId, fecha, input.turno, 'pendiente'));
