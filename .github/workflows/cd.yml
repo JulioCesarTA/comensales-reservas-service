@@ -1,7 +1,6 @@
 name: cd
-# Al hacer commit en main: construye la imagen EN EL PC (runner propio, usa el caché de Docker), la sube a GHCR
-# y reinicia el servicio en su servidor por SSH. Requiere el runner encendido (Escritorio\iniciar-runners.bat) y Docker Desktop abierto.
-# Secretos del repositorio: SSH_HOST, SSH_USER, SSH_KEY
+# Al hacer commit en main: construye la imagen EN EL PC (runner propio, usa el caché de Docker), la sube al registro
+# y reinicia el servicio en el clúster AKS de Azure. Requiere el runner encendido (Escritorio\iniciar-runners.bat) y Docker Desktop abierto.
 on:
   workflow_dispatch:
   push:
@@ -19,35 +18,42 @@ jobs:
       run:
         shell: C:/gitbash/bin/bash.exe --noprofile --norc -e -o pipefail {0}
     env:
-      SSH_KEY: ${{ secrets.SSH_KEY }}
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_USER: ${{ secrets.SSH_USER }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Docker aislado (cada runner con su propia sesión)
         run: |
           DC="$RUNNER_TEMP/docker"; DCU="$(cygpath -u "$DC")"
           mkdir -p "$DCU" && cp -r ~/.docker/. "$DCU/" 2>/dev/null || true
           [ -f "$DCU/config.json" ] && sed -i '/credsStore/d;/credHelpers/d' "$DCU/config.json" || echo '{}' > "$DCU/config.json"
           echo "DOCKER_CONFIG=$DC" >> "$GITHUB_ENV"
+
       - name: Login en GHCR
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Construir y subir la imagen
         run: |
           OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr 'A-Z' 'a-z')
           IMG=ghcr.io/$OWNER/comensales-reservas-service
-          docker build -t $IMG:latest -t $IMG:${{ github.sha }} --label org.opencontainers.image.source=https://github.com/${{ github.repository }} .
+          docker build -t $IMG:latest --label org.opencontainers.image.source=https://github.com/${{ github.repository }} .
           docker push $IMG:latest
-          docker push $IMG:${{ github.sha }}
-
-      - name: Desplegar por SSH
+      - name: Reiniciar en AKS
         run: |
-          OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr 'A-Z' 'a-z')
-          printf '%s\n' "$SSH_KEY" > key && chmod 600 key
-          SSH="ssh -i key -o StrictHostKeyChecking=no -o ConnectTimeout=20 $SSH_USER@$SSH_HOST"
-          echo "${{ secrets.GITHUB_TOKEN }}" | $SSH "docker login ghcr.io -u ${{ github.actor }} --password-stdin"
-          $SSH "cd ~/comedor && docker compose --env-file .env --env-file .env.secrets --env-file .env.ec2 -f docker-compose.yml -f docker-compose.ec2.yml pull comensales-reservas-service && docker compose --env-file .env --env-file .env.secrets --env-file .env.ec2 -f docker-compose.yml -f docker-compose.ec2.yml up -d --no-deps comensales-reservas-service && docker image prune -f >/dev/null"
-          rm -f key
+          KUBECONFIG_FILE="$RUNNER_TEMP/kube-aks.yaml"
+          python - "$KUBECONFIG_FILE" <<'PY'
+          import base64, json, os, sys, urllib.parse, urllib.request
+          E = os.environ
+          datos = urllib.parse.urlencode({"grant_type": "client_credentials", "client_id": E["AZURE_CLIENT_ID"], "client_secret": E["AZURE_CLIENT_SECRET"],
+                                          "scope": "https://management.azure.com/.default"}).encode()
+          token = json.load(urllib.request.urlopen(urllib.request.Request(f"https://login.microsoftonline.com/{E['AZURE_TENANT_ID']}/oauth2/v2.0/token", datos), timeout=30))["access_token"]
+          url = (f"https://management.azure.com/subscriptions/{E['AZURE_SUBSCRIPTION_ID']}/resourceGroups/comedor-azure/providers/"
+                 "Microsoft.ContainerService/managedClusters/comedor-aks/listClusterAdminCredential?api-version=2024-05-01")
+          r = json.load(urllib.request.urlopen(urllib.request.Request(url, b"", {"Authorization": "Bearer " + token}), timeout=30))
+          open(sys.argv[1], "wb").write(base64.b64decode(r["kubeconfigs"][0]["value"]))
+          PY
+          export KUBECONFIG="$KUBECONFIG_FILE"
+          kubectl -n comedor rollout restart deploy/comensales-reservas-service
+          kubectl -n comedor rollout status deploy/comensales-reservas-service --timeout=600s
