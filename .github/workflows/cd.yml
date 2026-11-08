@@ -1,37 +1,47 @@
 name: cd
-# Secretos: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_WORKLOAD_CLIENT_ID, ACR_NAME, INFRA_REPO_TOKEN
+# Al hacer commit en main: construye la imagen EN EL PC (runner propio, usa el caché de Docker), la sube a GHCR
+# y reinicia el servicio en su servidor por SSH. Requiere el runner encendido (Escritorio\iniciar-runners.bat) y Docker Desktop abierto.
+# Secretos del repositorio: SSH_HOST, SSH_USER, SSH_KEY
 on:
   workflow_dispatch:
   push:
     branches: [main]
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: cd
+  cancel-in-progress: true
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    permissions: { id-token: write, contents: read }
+  desplegar:
+    runs-on: [self-hosted, pc-julio]
+    defaults:
+      run:
+        shell: C:/gitbash/bin/bash.exe --noprofile --norc -e -o pipefail {0}
+    env:
+      SSH_KEY: ${{ secrets.SSH_KEY }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: JulioCesarTA/comedor-infra
-          token: ${{ secrets.INFRA_REPO_TOKEN }}
-          path: infra-repo
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: ACR login
-        run: az acr login --name ${{ secrets.ACR_NAME }}
-      - name: Build & push
+
+      - name: Login en GHCR
         run: |
-          IMG=${{ secrets.ACR_NAME }}.azurecr.io/comensales-reservas-service:${{ github.sha }}
-          docker build -t $IMG .
-          docker push $IMG
-      - name: AKS credentials
-        run: az aks get-credentials --resource-group comedor-uagrm-rg --name aks-comedor
-      - name: kubectl apply
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Construir y subir la imagen
         run: |
-          export ACR_REGISTRY=${{ secrets.ACR_NAME }}
-          export IMAGE_TAG=${{ github.sha }}
-          export AZURE_CLIENT_ID=${{ secrets.AZURE_WORKLOAD_CLIENT_ID }}
-          envsubst < infra-repo/infra/k8s/azure/comensales-reservas-service/deployment.yaml | kubectl apply -f -
+          OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr 'A-Z' 'a-z')
+          IMG=ghcr.io/$OWNER/comensales-reservas-service
+          docker build -t $IMG:latest -t $IMG:${{ github.sha }} --label org.opencontainers.image.source=https://github.com/${{ github.repository }} .
+          docker push $IMG:latest
+          docker push $IMG:${{ github.sha }}
+
+      - name: Desplegar por SSH
+        run: |
+          OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr 'A-Z' 'a-z')
+          printf '%s\n' "$SSH_KEY" > key && chmod 600 key
+          SSH="ssh -i key -o StrictHostKeyChecking=no -o ConnectTimeout=20 $SSH_USER@$SSH_HOST"
+          echo "${{ secrets.GITHUB_TOKEN }}" | $SSH "docker login ghcr.io -u ${{ github.actor }} --password-stdin"
+          $SSH "cd ~/comedor && docker compose --env-file .env --env-file .env.secrets --env-file .env.ec2 -f docker-compose.yml -f docker-compose.ec2.yml pull comensales-reservas-service && docker compose --env-file .env --env-file .env.secrets --env-file .env.ec2 -f docker-compose.yml -f docker-compose.ec2.yml up -d --no-deps comensales-reservas-service && docker image prune -f >/dev/null"
+          rm -f key
