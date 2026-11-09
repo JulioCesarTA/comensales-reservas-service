@@ -1,4 +1,8 @@
 import { Module } from '@nestjs/common';
+import { ApolloFederationDriver, ApolloFederationDriverConfig } from '@nestjs/apollo';
+import { GraphQLModule } from '@nestjs/graphql';
+import { ESQUEMA } from '../../interface-adapters/graphql/esquema';
+import { EstudianteResolver, IngresoResolver } from '../../interface-adapters/graphql/comensales.resolver';
 import { APP_FILTER } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -50,6 +54,10 @@ export const ENTIDADES = [EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm];
       synchronize: true,
     }),
     TypeOrmModule.forFeature(ENTIDADES),
+    // Subgrafo de Apollo Federation: el gateway GraphQL del back-office lo compone con menú y pagos (SPEC §4)
+    GraphQLModule.forRoot<ApolloFederationDriverConfig>({
+      driver: ApolloFederationDriver, typeDefs: ESQUEMA, path: '/graphql', playground: false,
+    }),
   ],
   controllers: [ReservasController, EstudiantesController, AnaliticaController, AsistenciaController, McpController],
   providers: [
@@ -62,6 +70,7 @@ export const ENTIDADES = [EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm];
     { provide: EventBusPort, useExisting: SnsBus },
     { provide: QrGeneratorPort, useExisting: QrGenerator },
     { provide: APP_FILTER, useClass: ErroresNegocioFilter },
+    EstudianteResolver, IngresoResolver,
     casoDeUso(ResolverEstudianteUseCase, EstudianteRepo),
     casoDeUso(ReservarRacionUseCase, EstudianteRepo, ReservaRepo, EventBusPort, ResolverEstudianteUseCase, BecaRepo),
     casoDeUso(ListarReservasEstudianteUseCase, ReservaRepo, ResolverEstudianteUseCase),
