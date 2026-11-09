@@ -1,9 +1,10 @@
 import { v4 as uuid } from 'uuid';
-import { EstudianteRepo, ReservaRepo, EventBusPort } from './ports';
+import { BecaRepo, EstudianteRepo, ReservaRepo, EventBusPort } from './ports';
 import { ResolverEstudianteUseCase, esUuid } from './ResolverEstudiante';
 import { Reserva } from '../entities/Reserva';
 import { Estudiante } from '../entities/Estudiante';
 import { Turno } from '../entities/Turno';
+import { ReglaDeNegocioError } from '../entities/errores';
 
 /**
  * Paso 1 de la Saga 1: crea una reserva en estado `pendiente`.
@@ -14,6 +15,7 @@ export class ReservarRacionUseCase {
     private readonly reservas: ReservaRepo,
     private readonly bus: EventBusPort,
     private readonly resolver: ResolverEstudianteUseCase,
+    private readonly becas: BecaRepo,
   ) {}
 
   /** Si la referencia es una matrícula/usuario que aún no está en el padrón, se registra (idempotente). */
@@ -39,7 +41,14 @@ export class ReservarRacionUseCase {
     const fecha = new Date(fechaRaw);
     if (isNaN(fecha.getTime())) throw new Error(`fecha inválida: ${input.fecha}`);
 
-    // Un estudiante puede reservar más de una ración por día (p. ej. almuerzo para él y para un compañero, o varios turnos).
+    // Quien paga puede reservar todas las raciones que quiera en el día. Con beca activa la beca cubre UNA ración por día.
+    const dia = fecha.toISOString().slice(0, 10);
+    if (await this.becas.findActivaByEstudiante(est.id)) {
+      const previas = await this.reservas.findByEstudiante(est.id);
+      if (previas.some(r => r.estado !== 'cancelada' && new Date(r.fecha).toISOString().slice(0, 10) === dia)) {
+        throw new ReglaDeNegocioError(`Con beca solo puedes reservar una ración por día (ya tienes una para el ${dia}).`);
+      }
+    }
 
     const saved = await this.reservas.save(
       new Reserva(uuid(), est.id, input.menuId, input.platoId, fecha, input.turno, 'pendiente'));

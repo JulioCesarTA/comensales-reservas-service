@@ -10,6 +10,8 @@ import { ReservarRacionUseCase } from './ReservarRacion';
 import { ConsultarBecaUseCase } from './ConsultarBeca';
 import { AsignarBecaUseCase, CrearEstudianteUseCase } from './GestionarEstudiantes';
 import { ListarReservasAnaliticasUseCase } from './ConsultasAnaliticas';
+import { ListarReservasEstudianteUseCase, ObtenerReservaUseCase } from './ConsultasReserva';
+import { ReglaDeNegocioError } from '../entities/errores';
 
 class EstudiantesEnMemoria extends EstudianteRepo {
   datos: Estudiante[] = [];
@@ -39,7 +41,7 @@ class BusEspia extends EventBusPort {
 const armar = () => {
   const estudiantes = new EstudiantesEnMemoria(), becas = new BecasEnMemoria(), reservas = new ReservasEnMemoria(), bus = new BusEspia();
   const resolver = new ResolverEstudianteUseCase(estudiantes);
-  return { estudiantes, becas, reservas, bus, resolver, reservar: new ReservarRacionUseCase(estudiantes, reservas, bus, resolver) };
+  return { estudiantes, becas, reservas, bus, resolver, reservar: new ReservarRacionUseCase(estudiantes, reservas, bus, resolver, becas) };
 };
 const pedido = (estudianteId: string, fecha = '2026-11-09') => ({ estudianteId, menuId: 'm1', platoId: 'p1', fecha, turno: Turno.ALMUERZO });
 
@@ -50,6 +52,40 @@ describe('ReservarRacion', () => {
     expect(r.estado).toBe('pendiente');
     expect((await estudiantes.findByRegistro('juan.perez'))?.email).toBe('juan.perez@uagrm.edu.bo');
     expect(bus.eventos.map(e => e.type)).toEqual(['ReservaCreadaEvent']);
+  });
+
+  it('con beca activa solo se reserva una ración por día; cancelarla libera el día', async () => {
+    const { reservar, estudiantes, becas, reservas } = armar();
+    const e = await estudiantes.save(new Estudiante('11111111-1111-4111-8111-111111111111', 'becaria', 'Becaria', 'b@uagrm.edu.bo'));
+    await becas.save(new Beca('b1', e.id, 'completa', 60, 0, new Date(Date.now() - 1e9), new Date(Date.now() + 1e9)));
+    const primera = await reservar.execute(pedido('becaria'));
+    await expect(reservar.execute(pedido('becaria'))).rejects.toBeInstanceOf(ReglaDeNegocioError);
+    await expect(reservar.execute(pedido('becaria'))).rejects.toThrow('Con beca solo puedes reservar una ración por día');
+    await expect(reservar.execute(pedido('becaria', '2026-11-10'))).resolves.toBeDefined();   // otro día sí
+    primera.cancelar();
+    await reservas.save(primera);
+    await expect(reservar.execute(pedido('becaria'))).resolves.toBeDefined();                // cancelada: el día vuelve a estar libre
+  });
+
+  it('una beca vencida no limita: se comporta como quien paga', async () => {
+    const { reservar, estudiantes, becas } = armar();
+    const e = await estudiantes.save(new Estudiante('22222222-2222-4222-8222-222222222222', 'exbecario', 'Ex', 'x@uagrm.edu.bo'));
+    await becas.save(new Beca('b2', e.id, 'media', 40, 0, new Date(Date.now() - 2e9), new Date(Date.now() - 1e9)));
+    await reservar.execute(pedido('exbecario'));
+    await expect(reservar.execute(pedido('exbecario'))).resolves.toBeDefined();
+  });
+
+  it('Mis reservas: lista las del estudiante (la más reciente primero) y una reserva se consulta por id', async () => {
+    const { reservar, reservas, resolver } = armar();
+    const a = await reservar.execute(pedido('carla', '2026-11-09'));
+    const b = await reservar.execute(pedido('carla', '2026-11-12'));
+    await reservar.execute(pedido('otra', '2026-11-10'));
+    const lista = await new ListarReservasEstudianteUseCase(reservas, resolver).execute('carla');
+    expect(lista.map(r => r.id)).toEqual([b.id, a.id]);
+    expect(lista[0]).toMatchObject({ fecha: '2026-11-12', estado: 'pendiente', qr: null });
+    expect(await new ListarReservasEstudianteUseCase(reservas, resolver).execute('nadie')).toEqual([]);
+    expect(await new ObtenerReservaUseCase(reservas).execute(a.id)).toMatchObject({ id: a.id, platoId: 'p1', turno: 'ALMUERZO' });
+    await expect(new ObtenerReservaUseCase(reservas).execute('no-existe')).rejects.toBeInstanceOf(NoEncontradoError);
   });
 
   it('un estudiante puede reservar más de una ración el mismo día', async () => {

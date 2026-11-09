@@ -16,6 +16,7 @@ import { ConfirmarReservaUseCase } from '../../use-cases/ConfirmarReserva';
 import { CancelarReservaUseCase } from '../../use-cases/CancelarReserva';
 import { ValidarIngresoUseCase } from '../../use-cases/ValidarIngreso';
 import { ConsultarBecaUseCase } from '../../use-cases/ConsultarBeca';
+import { ListarReservasEstudianteUseCase, ObtenerReservaUseCase } from '../../use-cases/ConsultasReserva';
 import { ResolverEstudianteUseCase } from '../../use-cases/ResolverEstudiante';
 import {
   AsignarBecaUseCase, CrearEstudianteUseCase, ListarEstudiantesUseCase, ObtenerEstudianteUseCase,
@@ -51,7 +52,9 @@ const casoDeUso = <T>(clase: new (...args: any[]) => T, ...inject: any[]) =>
     { provide: QrGeneratorPort, useExisting: QrGenerator },
     { provide: APP_FILTER, useClass: ErroresNegocioFilter },
     casoDeUso(ResolverEstudianteUseCase, EstudianteRepo),
-    casoDeUso(ReservarRacionUseCase, EstudianteRepo, ReservaRepo, EventBusPort, ResolverEstudianteUseCase),
+    casoDeUso(ReservarRacionUseCase, EstudianteRepo, ReservaRepo, EventBusPort, ResolverEstudianteUseCase, BecaRepo),
+    casoDeUso(ListarReservasEstudianteUseCase, ReservaRepo, ResolverEstudianteUseCase),
+    casoDeUso(ObtenerReservaUseCase, ReservaRepo),
     casoDeUso(ConfirmarReservaUseCase, ReservaRepo, EventBusPort, QrGeneratorPort),
     casoDeUso(CancelarReservaUseCase, ReservaRepo, EventBusPort),
     casoDeUso(ValidarIngresoUseCase, ReservaRepo),

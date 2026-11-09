@@ -4,6 +4,7 @@ import { ConfirmarReservaUseCase } from '../../use-cases/ConfirmarReserva';
 import { CancelarReservaUseCase } from '../../use-cases/CancelarReserva';
 import { ValidarIngresoUseCase } from '../../use-cases/ValidarIngreso';
 import { ConsultarBecaUseCase } from '../../use-cases/ConsultarBeca';
+import { ListarReservasEstudianteUseCase, ObtenerReservaUseCase } from '../../use-cases/ConsultasReserva';
 import { Turno } from '../../entities/Turno';
 
 class CrearReservaDto {
@@ -23,6 +24,8 @@ export class ReservasController {
     private readonly cancelar: CancelarReservaUseCase,
     private readonly validar: ValidarIngresoUseCase,
     private readonly consultarBeca: ConsultarBecaUseCase,
+    private readonly listarReservas: ListarReservasEstudianteUseCase,
+    private readonly obtenerReserva: ObtenerReservaUseCase,
   ) {}
 
   @Get('health') health() { return { status: 'UP', service: 'comensales-reservas' }; }
@@ -32,6 +35,9 @@ export class ReservasController {
     const r = await this.reservar.execute(body);
     return { id: r.id, estado: r.estado };
   }
+
+  @Get('reservas/:id')
+  async una(@Param('id') id: string) { return this.obtenerReserva.execute(id); }
 
   @Post('reservas/:id/confirmar')
   async confirmarR(@Param('id') id: string) { return this.confirmar.execute(id); }
@@ -47,4 +53,7 @@ export class ReservasController {
 
   @Get('estudiantes/:id/beca')
   async beca(@Param('id') id: string) { return this.consultarBeca.execute(id); }
+
+  @Get('estudiantes/:id/reservas')
+  async reservasDe(@Param('id') id: string) { return this.listarReservas.execute(id); }
 }
