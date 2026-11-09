@@ -35,16 +35,20 @@ import { AnaliticaController } from '../../interface-adapters/controllers/analit
 const casoDeUso = <T>(clase: new (...args: any[]) => T, ...inject: any[]) =>
   ({ provide: clase, useFactory: (...deps: any[]) => new clase(...deps), inject });
 
+/** Todas las tablas del servicio. Una entidad que falte aquí compila bien pero falla con «No metadata for … was found»
+ *  al primer uso: por eso la lista es una sola y una prueba la compara contra todas las clases @Entity. */
+export const ENTIDADES = [EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm];
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
-      entities: [EstudianteOrm, BecaOrm, ReservaOrm],
+      entities: ENTIDADES,
       synchronize: true,
     }),
-    TypeOrmModule.forFeature([EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm]),
+    TypeOrmModule.forFeature(ENTIDADES),
   ],
   controllers: [ReservasController, EstudiantesController, AnaliticaController, AsistenciaController],
   providers: [
