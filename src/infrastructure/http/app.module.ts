@@ -30,6 +30,7 @@ import { EstudiantesController } from '../../interface-adapters/controllers/estu
 import { ConsultarAsistenciaUseCase, ListarAsistenciaAnaliticaUseCase, MarcarAsistenciaUseCase } from '../../use-cases/MarcarAsistencia';
 import { AsistenciaController } from '../../interface-adapters/controllers/asistencia.controller';
 import { AnaliticaController } from '../../interface-adapters/controllers/analitica.controller';
+import { McpController } from '../mcp/mcp.controller';
 
 // Los casos de uso no conocen a Nest: aquí (la capa más externa) se les entregan sus puertos.
 const casoDeUso = <T>(clase: new (...args: any[]) => T, ...inject: any[]) =>
@@ -50,7 +51,7 @@ export const ENTIDADES = [EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm];
     }),
     TypeOrmModule.forFeature(ENTIDADES),
   ],
-  controllers: [ReservasController, EstudiantesController, AnaliticaController, AsistenciaController],
+  controllers: [ReservasController, EstudiantesController, AnaliticaController, AsistenciaController, McpController],
   providers: [
     EstudianteGateway, BecaGateway, ReservaGateway, AsistenciaGateway, UbicacionComedorEnv, SnsBus, QrGenerator,
     { provide: EstudianteRepo, useExisting: EstudianteGateway },
