@@ -27,6 +27,7 @@ import { ListarBecasAnaliticasUseCase, ListarReservasAnaliticasUseCase } from '.
 import { EstudianteRepo, BecaRepo, ReservaRepo, EventBusPort, QrGeneratorPort, AsistenciaRepo, UbicacionComedor } from '../../use-cases/ports';
 import { ReservasController } from '../../interface-adapters/controllers/reservas.controller';
 import { EstudiantesController } from '../../interface-adapters/controllers/estudiantes.controller';
+import { ConsultarAsistenciaUseCase, ListarAsistenciaAnaliticaUseCase, MarcarAsistenciaUseCase } from '../../use-cases/MarcarAsistencia';
 import { AsistenciaController } from '../../interface-adapters/controllers/asistencia.controller';
 import { AnaliticaController } from '../../interface-adapters/controllers/analitica.controller';
 
@@ -70,6 +71,9 @@ const casoDeUso = <T>(clase: new (...args: any[]) => T, ...inject: any[]) =>
     casoDeUso(AsignarBecaUseCase, BecaRepo, ResolverEstudianteUseCase),
     casoDeUso(ListarReservasAnaliticasUseCase, ReservaRepo, EstudianteRepo),
     casoDeUso(ListarBecasAnaliticasUseCase, BecaRepo, EstudianteRepo),
+    casoDeUso(MarcarAsistenciaUseCase, AsistenciaRepo, UbicacionComedor),
+    casoDeUso(ConsultarAsistenciaUseCase, AsistenciaRepo),
+    casoDeUso(ListarAsistenciaAnaliticaUseCase, AsistenciaRepo),
   ],
 })
 export class AppModule {}
