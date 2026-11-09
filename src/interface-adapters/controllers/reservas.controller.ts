@@ -6,6 +6,11 @@ import { ValidarIngresoUseCase } from '../../use-cases/ValidarIngreso';
 import { ConsultarBecaUseCase } from '../../use-cases/ConsultarBeca';
 import { ListarReservasEstudianteUseCase, ObtenerReservaUseCase } from '../../use-cases/ConsultasReserva';
 import { Turno } from '../../entities/Turno';
+import {
+  presentarReserva, presentarReservaCancelada, presentarReservaConfirmada, presentarReservaCreada, presentarReservas,
+  presentarValidacionQr,
+} from '../presenters/reserva.presenter';
+import { presentarConsultaBeca } from '../presenters/beca.presenter';
 
 class CrearReservaDto {
   estudianteId: string;
@@ -32,28 +37,27 @@ export class ReservasController {
 
   @Post('reservas')
   async crear(@Body() body: CrearReservaDto) {
-    const r = await this.reservar.execute(body);
-    return { id: r.id, estado: r.estado };
+    return presentarReservaCreada(await this.reservar.execute(body));
   }
 
   @Get('reservas/:id')
-  async una(@Param('id') id: string) { return this.obtenerReserva.execute(id); }
+  async una(@Param('id') id: string) { return presentarReserva(await this.obtenerReserva.execute(id)); }
 
   @Post('reservas/:id/confirmar')
-  async confirmarR(@Param('id') id: string) { return this.confirmar.execute(id); }
+  async confirmarR(@Param('id') id: string) { return presentarReservaConfirmada(await this.confirmar.execute(id)); }
 
   @Post('reservas/:id/cancelar')
   async cancelarR(@Param('id') id: string) {
     await this.cancelar.execute(id);
-    return { ok: true, reservaId: id };
+    return presentarReservaCancelada(id);
   }
 
   @Post('ingreso/validar-qr')
-  async validarQr(@Body() body: { qr: string }) { return this.validar.execute(body.qr); }
+  async validarQr(@Body() body: { qr: string }) { return presentarValidacionQr(await this.validar.execute(body.qr)); }
 
   @Get('estudiantes/:id/beca')
-  async beca(@Param('id') id: string) { return this.consultarBeca.execute(id); }
+  async beca(@Param('id') id: string) { return presentarConsultaBeca(await this.consultarBeca.execute(id)); }
 
   @Get('estudiantes/:id/reservas')
-  async reservasDe(@Param('id') id: string) { return this.listarReservas.execute(id); }
+  async reservasDe(@Param('id') id: string) { return presentarReservas(await this.listarReservas.execute(id)); }
 }

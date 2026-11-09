@@ -3,8 +3,9 @@ import { TipoBeca } from '../../entities/Beca';
 import { ConsultarBecaUseCase } from '../../use-cases/ConsultarBeca';
 import { AsignarBecaUseCase, ListarEstudiantesUseCase, ObtenerEstudianteUseCase } from '../../use-cases/GestionarEstudiantes';
 import { ValidarIngresoUseCase } from '../../use-cases/ValidarIngreso';
-
-const texto = (v: unknown) => (v instanceof Date ? v.toISOString() : (v as string | undefined));
+import { presentarEstudiante, presentarEstudiantes } from '../presenters/estudiante.presenter';
+import { presentarConsultaBecaGraphql } from '../presenters/beca.presenter';
+import { presentarValidacionQr } from '../presenters/reserva.presenter';
 
 @Resolver('Estudiante')
 export class EstudianteResolver {
@@ -16,15 +17,14 @@ export class EstudianteResolver {
   ) {}
 
   private async becaDe(ref: string) {
-    const b: any = await this.consultarBeca.execute(ref);
-    return { ...b, vigenteDesde: texto(b.vigenteDesde), vigenteHasta: texto(b.vigenteHasta) };
+    return presentarConsultaBecaGraphql(await this.consultarBeca.execute(ref));
   }
 
   @Query('estudiantes')
-  estudiantes() { return this.listar.execute(); }
+  async estudiantes() { return presentarEstudiantes(await this.listar.execute()); }
 
   @Query('estudiante')
-  estudiante(@Args('id') id: string) { return this.obtener.execute(id); }
+  async estudiante(@Args('id') id: string) { return presentarEstudiante(await this.obtener.execute(id)); }
 
   @Query('beca')
   beca(@Args('estudianteId') id: string) { return this.becaDe(id); }
@@ -34,8 +34,8 @@ export class EstudianteResolver {
 
   /** Federation: otro subgrafo (pagos) pide un Estudiante por cualquiera de sus dos claves. */
   @ResolveReference()
-  referencia(ref: { id?: string; registroUniv?: string }) {
-    return this.obtener.execute((ref.id ?? ref.registroUniv) as string);
+  async referencia(ref: { id?: string; registroUniv?: string }) {
+    return presentarEstudiante(await this.obtener.execute((ref.id ?? ref.registroUniv) as string));
   }
 
   @Mutation('asignarBeca')
@@ -50,5 +50,5 @@ export class IngresoResolver {
   constructor(private readonly validar: ValidarIngresoUseCase) {}
 
   @Mutation('validarQr')
-  validarQr(@Args('qr') qr: string) { return this.validar.execute(qr); }
+  async validarQr(@Args('qr') qr: string) { return presentarValidacionQr(await this.validar.execute(qr)); }
 }

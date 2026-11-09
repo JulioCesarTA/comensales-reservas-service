@@ -1,10 +1,11 @@
 import { BecaRepo, EstudianteRepo, ReservaRepo } from './ports';
+import { BecaAnaliticaSalida, ReservaAnaliticaSalida } from './salidas';
 
 /** Lecturas planas (solo consulta) para el generador de reportes: reservas y becas con los datos del estudiante. */
 export class ListarReservasAnaliticasUseCase {
   constructor(private readonly reservas: ReservaRepo, private readonly estudiantes: EstudianteRepo) {}
 
-  async execute() {
+  async execute(): Promise<ReservaAnaliticaSalida[]> {
     const porId = new Map((await this.estudiantes.listar()).map(e => [e.id, e]));
     return (await this.reservas.listarTodas()).map(r => {
       const e = porId.get(r.estudianteId);
@@ -19,7 +20,7 @@ export class ListarReservasAnaliticasUseCase {
 export class ListarBecasAnaliticasUseCase {
   constructor(private readonly becas: BecaRepo, private readonly estudiantes: EstudianteRepo) {}
 
-  async execute() {
+  async execute(): Promise<BecaAnaliticaSalida[]> {
     const porId = new Map((await this.estudiantes.listar()).map(e => [e.id, e]));
     return (await this.becas.listarTodas()).map(b => {
       const e = porId.get(b.estudianteId);

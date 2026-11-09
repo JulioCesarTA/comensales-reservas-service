@@ -3,6 +3,8 @@ import {
   AsignarBecaUseCase, CrearEstudianteUseCase, ListarEstudiantesUseCase, ObtenerEstudianteUseCase,
 } from '../../use-cases/GestionarEstudiantes';
 import { TipoBeca } from '../../entities/Beca';
+import { presentarEstudiante, presentarEstudiantes } from '../presenters/estudiante.presenter';
+import { presentarBecaAsignada } from '../presenters/beca.presenter';
 
 @Controller('estudiantes')
 export class EstudiantesController {
@@ -14,19 +16,19 @@ export class EstudiantesController {
   ) {}
 
   @Get()
-  listar() { return this.listarEstudiantes.execute(); }
+  async listar() { return presentarEstudiantes(await this.listarEstudiantes.execute()); }
 
   @Post()
-  crear(@Body() b: { registroUniv: string; nombre: string; email: string; telefono?: string }) {
-    return this.crearEstudiante.execute(b);
+  async crear(@Body() b: { registroUniv: string; nombre: string; email: string; telefono?: string }) {
+    return presentarEstudiante(await this.crearEstudiante.execute(b));
   }
 
   @Get(':id')
-  uno(@Param('id') id: string) { return this.obtenerEstudiante.execute(id); }
+  async uno(@Param('id') id: string) { return presentarEstudiante(await this.obtenerEstudiante.execute(id)); }
 
   // POST /estudiantes/:id/beca { tipo, mesesVigencia?, cupoRacionesMes? }
   @Post(':id/beca')
   async beca(@Param('id') id: string, @Body() b: { tipo: TipoBeca; mesesVigencia?: number; cupoRacionesMes?: number }) {
-    return { ok: true, beca: await this.asignarBeca.execute(id, b) };
+    return presentarBecaAsignada(await this.asignarBeca.execute(id, b));
   }
 }

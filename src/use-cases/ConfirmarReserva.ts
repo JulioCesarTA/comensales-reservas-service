@@ -1,5 +1,6 @@
 import { ReservaRepo, EventBusPort, QrGeneratorPort } from './ports';
 import { NoEncontradoError } from '../entities/errores';
+import { ReservaConfirmadaSalida } from './salidas';
 
 /** Paso 4 de la Saga 1: confirma y emite QR. */
 export class ConfirmarReservaUseCase {
@@ -9,7 +10,7 @@ export class ConfirmarReservaUseCase {
     private readonly qr: QrGeneratorPort,
   ) {}
 
-  async execute(reservaId: string): Promise<{ reservaId: string; qr: string }> {
+  async execute(reservaId: string): Promise<ReservaConfirmadaSalida> {
     const r = await this.reservas.findById(reservaId);
     if (!r) throw new NoEncontradoError('Reserva no existe');
     const qr = await this.qr.generar({

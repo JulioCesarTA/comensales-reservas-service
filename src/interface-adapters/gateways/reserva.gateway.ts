@@ -1,16 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { ReservaRepo } from '../../use-cases/ports';
 import { EstadoReserva, Reserva } from '../../entities/Reserva';
 import { Turno } from '../../entities/Turno';
-import { ReservaOrm } from '../../infrastructure/database/postgres/reserva.entity';
+import { AlmacenReservas, FilaReserva } from './almacenes';
 
 @Injectable()
 export class ReservaGateway extends ReservaRepo {
-  constructor(@InjectRepository(ReservaOrm) private readonly repo: Repository<ReservaOrm>) { super(); }
+  constructor(private readonly almacen: AlmacenReservas) { super(); }
 
-  private toDomain(o: ReservaOrm): Reserva {
+  private toDomain(o: FilaReserva): Reserva {
     return new Reserva(o.id, o.estudianteId, o.menuId, o.platoId, new Date(o.fecha),
       o.turno as Turno, o.estado as EstadoReserva, o.qrCode, o.createdAt);
   }
@@ -18,22 +16,22 @@ export class ReservaGateway extends ReservaRepo {
     const fechaStr = r.fecha instanceof Date && !isNaN(r.fecha.getTime())
       ? r.fecha.toISOString().slice(0, 10)
       : String(r.fecha).slice(0, 10);
-    await this.repo.save({
+    await this.almacen.guardar({
       id: r.id, estudianteId: r.estudianteId, menuId: r.menuId, platoId: r.platoId,
-      fecha: fechaStr as any, turno: r.turno, estado: r.estado, qrCode: r.qrCode,
+      fecha: fechaStr, turno: r.turno, estado: r.estado, qrCode: r.qrCode,
     });
     return r;
   }
   async findById(id: string): Promise<Reserva | null> {
-    const o = await this.repo.findOneBy({ id });
+    const o = await this.almacen.porId(id);
     return o ? this.toDomain(o) : null;
   }
   async findByEstudiante(estId: string): Promise<Reserva[]> {
-    const os = await this.repo.find({ where: { estudianteId: estId } });
+    const os = await this.almacen.porEstudiante(estId);
     return os.map(o => this.toDomain(o));
   }
   async listarTodas(): Promise<Reserva[]> {
-    const os = await this.repo.find({ order: { createdAt: 'ASC' } });
+    const os = await this.almacen.todas();
     return os.map(o => this.toDomain(o));
   }
 }

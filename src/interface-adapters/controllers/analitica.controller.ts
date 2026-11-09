@@ -1,6 +1,9 @@
 import { Controller, Get } from '@nestjs/common';
 import { ListarBecasAnaliticasUseCase, ListarReservasAnaliticasUseCase } from '../../use-cases/ConsultasAnaliticas';
 import { ListarAsistenciaAnaliticaUseCase } from '../../use-cases/MarcarAsistencia';
+import {
+  presentarAsistenciaAnalitica, presentarBecasAnaliticas, presentarReservasAnaliticas,
+} from '../presenters/analitica.presenter';
 
 /** Lecturas planas (solo consulta) para el generador de reportes. */
 @Controller('analitica')
@@ -12,11 +15,11 @@ export class AnaliticaController {
   ) {}
 
   @Get('reservas')
-  listarReservas() { return this.reservas.execute(); }
+  async listarReservas() { return presentarReservasAnaliticas(await this.reservas.execute()); }
 
   @Get('asistencia')
-  listarAsistencia() { return this.asistencia.execute(); }
+  async listarAsistencia() { return presentarAsistenciaAnalitica(await this.asistencia.execute()); }
 
   @Get('becas')
-  listarBecas() { return this.becas.execute(); }
+  async listarBecas() { return presentarBecasAnaliticas(await this.becas.execute()); }
 }

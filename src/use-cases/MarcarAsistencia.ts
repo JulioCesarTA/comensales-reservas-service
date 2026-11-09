@@ -1,13 +1,19 @@
-import { v4 as uuid } from 'uuid';
 import { Asistencia, TipoMarca } from '../entities/Asistencia';
-import { AsistenciaRepo, UbicacionComedor } from './ports';
+import { AsistenciaRepo, GeneradorIds, UbicacionComedor } from './ports';
+import {
+  AsistenciaAnaliticaSalida, AsistenciaSalida, EstadoAsistenciaSalida, LugarComedorSalida, asistenciaSalida,
+} from './salidas';
 import { ReglaDeNegocioError } from '../entities/errores';
 
 const TIPOS: TipoMarca[] = ['entrada', 'salida'];
 
 /** Marca la entrada o la salida del personal. La distancia al comedor se calcula AQUÍ, no en el teléfono. */
 export class MarcarAsistenciaUseCase {
-  constructor(private readonly repo: AsistenciaRepo, private readonly comedor: UbicacionComedor) {}
+  constructor(
+    private readonly repo: AsistenciaRepo,
+    private readonly comedor: UbicacionComedor,
+    private readonly ids: GeneradorIds,
+  ) {}
 
   async execute(input: {
     usuario: string;
@@ -17,7 +23,7 @@ export class MarcarAsistenciaUseCase {
     lon: number;
     simulada?: boolean;
     marcadaEn?: string;
-  }): Promise<Asistencia> {
+  }): Promise<AsistenciaSalida> {
     const usuario = (input.usuario || '').trim();
     if (!usuario) throw new ReglaDeNegocioError('Falta el usuario que marca.');
     if (!TIPOS.includes(input.tipo)) throw new ReglaDeNegocioError('El tipo debe ser «entrada» o «salida».');
@@ -40,11 +46,20 @@ export class MarcarAsistenciaUseCase {
     const distancia = Asistencia.distancia(lat, lon, this.comedor.lat, this.comedor.lon);
     const marcada = input.marcadaEn ? new Date(input.marcadaEn) : new Date();
     const a = new Asistencia(
-      uuid(), usuario, input.rol || 'personal', input.tipo, lat, lon, distancia,
+      this.ids.nuevo(), usuario, input.rol || 'personal', input.tipo, lat, lon, distancia,
       distancia <= this.comedor.radioM, !!input.simulada,
       isNaN(marcada.getTime()) ? new Date() : marcada,
     );
-    return this.repo.save(a);
+    return asistenciaSalida(await this.repo.save(a));
+  }
+}
+
+/** Dónde está el comedor y hasta qué distancia vale marcar (la app lo muestra antes de marcar). */
+export class ConsultarLugarComedorUseCase {
+  constructor(private readonly comedor: UbicacionComedor) {}
+
+  async execute(): Promise<LugarComedorSalida> {
+    return { lat: this.comedor.lat, lon: this.comedor.lon, radioM: this.comedor.radioM };
   }
 }
 
@@ -52,7 +67,7 @@ export class MarcarAsistenciaUseCase {
 export class ConsultarAsistenciaUseCase {
   constructor(private readonly repo: AsistenciaRepo) {}
 
-  async execute(usuario: string) {
+  async execute(usuario: string): Promise<EstadoAsistenciaSalida> {
     const marcas = await this.repo.listarDe(usuario, 60);
     const ultima = marcas[0] ?? null;
     return {
@@ -71,7 +86,7 @@ export class ConsultarAsistenciaUseCase {
 export class ListarAsistenciaAnaliticaUseCase {
   constructor(private readonly repo: AsistenciaRepo) {}
 
-  async execute() {
+  async execute(): Promise<AsistenciaAnaliticaSalida[]> {
     return (await this.repo.listarTodas()).map(m => ({
       id: m.id,
       fecha: m.marcadaEn.toISOString().slice(0, 10),

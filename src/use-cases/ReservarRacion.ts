@@ -1,6 +1,6 @@
-import { v4 as uuid } from 'uuid';
-import { BecaRepo, EstudianteRepo, ReservaRepo, EventBusPort } from './ports';
+import { BecaRepo, EstudianteRepo, ReservaRepo, EventBusPort, GeneradorIds } from './ports';
 import { ResolverEstudianteUseCase, esUuid } from './ResolverEstudiante';
+import { ReservaSalida, reservaSalida } from './salidas';
 import { Reserva } from '../entities/Reserva';
 import { Estudiante } from '../entities/Estudiante';
 import { Turno } from '../entities/Turno';
@@ -16,14 +16,15 @@ export class ReservarRacionUseCase {
     private readonly bus: EventBusPort,
     private readonly resolver: ResolverEstudianteUseCase,
     private readonly becas: BecaRepo,
+    private readonly ids: GeneradorIds,
   ) {}
 
   /** Si la referencia es una matrícula/usuario que aún no está en el padrón, se registra (idempotente). */
-  private async estudianteDe(ref: string): Promise<Estudiante> {
+  private async estudianteDe(ref: string): Promise<{ id: string }> {
     const existente = await this.resolver.execute(ref);
     if (existente) return existente;
     if (esUuid(ref)) throw new Error(`Estudiante no existe: ${ref}`);
-    return this.estudiantes.save(new Estudiante(uuid(), ref, ref, `${ref}@uagrm.edu.bo`));
+    return this.estudiantes.save(new Estudiante(this.ids.nuevo(), ref, ref, `${ref}@uagrm.edu.bo`));
   }
 
   async execute(input: {
@@ -33,7 +34,7 @@ export class ReservarRacionUseCase {
     fecha: string;
     turno: Turno;
     sagaId?: string;
-  }): Promise<Reserva> {
+  }): Promise<ReservaSalida> {
     const est = await this.estudianteDe(input.estudianteId);
 
     // Parseo robusto: acepta "YYYY-MM-DD" o ISO completo
@@ -51,7 +52,7 @@ export class ReservarRacionUseCase {
     }
 
     const saved = await this.reservas.save(
-      new Reserva(uuid(), est.id, input.menuId, input.platoId, fecha, input.turno, 'pendiente'));
+      new Reserva(this.ids.nuevo(), est.id, input.menuId, input.platoId, fecha, input.turno, 'pendiente'));
     await this.bus.publish('dominio-reservas', {
       type: 'ReservaCreadaEvent',
       sagaId: input.sagaId,
@@ -60,6 +61,6 @@ export class ReservarRacionUseCase {
       menuId: saved.menuId,
       platoId: saved.platoId,
     });
-    return saved;
+    return reservaSalida(saved);
   }
 }

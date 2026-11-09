@@ -13,7 +13,15 @@ import { AsistenciaOrm } from '../database/postgres/asistencia.entity';
 import { EstudianteGateway } from '../../interface-adapters/gateways/estudiante.gateway';
 import { BecaGateway } from '../../interface-adapters/gateways/beca.gateway';
 import { ReservaGateway } from '../../interface-adapters/gateways/reserva.gateway';
-import { AsistenciaGateway, UbicacionComedorEnv } from '../../interface-adapters/gateways/asistencia.gateway';
+import { AsistenciaGateway } from '../../interface-adapters/gateways/asistencia.gateway';
+import { UbicacionComedorEnv } from '../config/ubicacion-comedor.env';
+import {
+  AlmacenAsistencias, AlmacenBecas, AlmacenEstudiantes, AlmacenReservas,
+} from '../../interface-adapters/gateways/almacenes';
+import {
+  AlmacenAsistenciasTypeOrm, AlmacenBecasTypeOrm, AlmacenEstudiantesTypeOrm, AlmacenReservasTypeOrm,
+} from '../database/postgres/almacenes.typeorm';
+import { GeneradorUuid } from '../ids/uuid.generador';
 import { ErroresNegocioFilter } from '../../interface-adapters/filters/errores-negocio.filter';
 import { SnsBus } from '../messaging/sns.bus';
 import { QrGenerator } from '../qr/qr.generator';
@@ -28,10 +36,14 @@ import {
   AsignarBecaUseCase, CrearEstudianteUseCase, ListarEstudiantesUseCase, ObtenerEstudianteUseCase,
 } from '../../use-cases/GestionarEstudiantes';
 import { ListarBecasAnaliticasUseCase, ListarReservasAnaliticasUseCase } from '../../use-cases/ConsultasAnaliticas';
-import { EstudianteRepo, BecaRepo, ReservaRepo, EventBusPort, QrGeneratorPort, AsistenciaRepo, UbicacionComedor } from '../../use-cases/ports';
+import {
+  EstudianteRepo, BecaRepo, ReservaRepo, EventBusPort, QrGeneratorPort, AsistenciaRepo, UbicacionComedor, GeneradorIds,
+} from '../../use-cases/ports';
 import { ReservasController } from '../../interface-adapters/controllers/reservas.controller';
 import { EstudiantesController } from '../../interface-adapters/controllers/estudiantes.controller';
-import { ConsultarAsistenciaUseCase, ListarAsistenciaAnaliticaUseCase, MarcarAsistenciaUseCase } from '../../use-cases/MarcarAsistencia';
+import {
+  ConsultarAsistenciaUseCase, ConsultarLugarComedorUseCase, ListarAsistenciaAnaliticaUseCase, MarcarAsistenciaUseCase,
+} from '../../use-cases/MarcarAsistencia';
 import { AsistenciaController } from '../../interface-adapters/controllers/asistencia.controller';
 import { AnaliticaController } from '../../interface-adapters/controllers/analitica.controller';
 import { McpController } from '../mcp/mcp.controller';
@@ -61,7 +73,11 @@ export const ENTIDADES = [EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm];
   ],
   controllers: [ReservasController, EstudiantesController, AnaliticaController, AsistenciaController, McpController],
   providers: [
-    EstudianteGateway, BecaGateway, ReservaGateway, AsistenciaGateway, UbicacionComedorEnv, SnsBus, QrGenerator,
+    { provide: AlmacenEstudiantes, useClass: AlmacenEstudiantesTypeOrm },
+    { provide: AlmacenBecas, useClass: AlmacenBecasTypeOrm },
+    { provide: AlmacenReservas, useClass: AlmacenReservasTypeOrm },
+    { provide: AlmacenAsistencias, useClass: AlmacenAsistenciasTypeOrm },
+    EstudianteGateway, BecaGateway, ReservaGateway, AsistenciaGateway, UbicacionComedorEnv, SnsBus, QrGenerator, GeneradorUuid,
     { provide: EstudianteRepo, useExisting: EstudianteGateway },
     { provide: BecaRepo, useExisting: BecaGateway },
     { provide: ReservaRepo, useExisting: ReservaGateway },
@@ -69,10 +85,11 @@ export const ENTIDADES = [EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm];
     { provide: UbicacionComedor, useExisting: UbicacionComedorEnv },
     { provide: EventBusPort, useExisting: SnsBus },
     { provide: QrGeneratorPort, useExisting: QrGenerator },
+    { provide: GeneradorIds, useExisting: GeneradorUuid },
     { provide: APP_FILTER, useClass: ErroresNegocioFilter },
     EstudianteResolver, IngresoResolver,
     casoDeUso(ResolverEstudianteUseCase, EstudianteRepo),
-    casoDeUso(ReservarRacionUseCase, EstudianteRepo, ReservaRepo, EventBusPort, ResolverEstudianteUseCase, BecaRepo),
+    casoDeUso(ReservarRacionUseCase, EstudianteRepo, ReservaRepo, EventBusPort, ResolverEstudianteUseCase, BecaRepo, GeneradorIds),
     casoDeUso(ListarReservasEstudianteUseCase, ReservaRepo, ResolverEstudianteUseCase),
     casoDeUso(ObtenerReservaUseCase, ReservaRepo),
     casoDeUso(ConfirmarReservaUseCase, ReservaRepo, EventBusPort, QrGeneratorPort),
@@ -81,12 +98,13 @@ export const ENTIDADES = [EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm];
     casoDeUso(ConsultarBecaUseCase, BecaRepo, ResolverEstudianteUseCase),
     casoDeUso(ListarEstudiantesUseCase, EstudianteRepo),
     casoDeUso(ObtenerEstudianteUseCase, ResolverEstudianteUseCase),
-    casoDeUso(CrearEstudianteUseCase, EstudianteRepo),
-    casoDeUso(AsignarBecaUseCase, BecaRepo, ResolverEstudianteUseCase),
+    casoDeUso(CrearEstudianteUseCase, EstudianteRepo, GeneradorIds),
+    casoDeUso(AsignarBecaUseCase, BecaRepo, ResolverEstudianteUseCase, GeneradorIds),
     casoDeUso(ListarReservasAnaliticasUseCase, ReservaRepo, EstudianteRepo),
     casoDeUso(ListarBecasAnaliticasUseCase, BecaRepo, EstudianteRepo),
-    casoDeUso(MarcarAsistenciaUseCase, AsistenciaRepo, UbicacionComedor),
+    casoDeUso(MarcarAsistenciaUseCase, AsistenciaRepo, UbicacionComedor, GeneradorIds),
     casoDeUso(ConsultarAsistenciaUseCase, AsistenciaRepo),
+    casoDeUso(ConsultarLugarComedorUseCase, UbicacionComedor),
     casoDeUso(ListarAsistenciaAnaliticaUseCase, AsistenciaRepo),
   ],
 })

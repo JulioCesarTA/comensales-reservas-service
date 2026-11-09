@@ -1,10 +1,11 @@
 import { ReservaRepo } from './ports';
+import { ValidacionIngresoSalida } from './salidas';
 
 /** Punto de servicio: valida un QR y marca la reserva como consumida. */
 export class ValidarIngresoUseCase {
   constructor(private readonly reservas: ReservaRepo) {}
 
-  async execute(qrCode: string): Promise<{ ok: boolean; reservaId?: string; motivo?: string }> {
+  async execute(qrCode: string): Promise<ValidacionIngresoSalida> {
     try {
       const payload = JSON.parse(Buffer.from(qrCode, 'base64').toString('utf-8'));
       const r = await this.reservas.findById(payload.reservaId);

@@ -4,14 +4,16 @@ import { Estudiante } from '../entities/Estudiante';
 import { Reserva } from '../entities/Reserva';
 import { Turno } from '../entities/Turno';
 import { NoEncontradoError } from '../entities/errores';
-import { AsistenciaRepo, BecaRepo, EstudianteRepo, EventBusPort, ReservaRepo } from './ports';
+import { AsistenciaRepo, BecaRepo, EstudianteRepo, EventBusPort, GeneradorIds, ReservaRepo } from './ports';
 import { ResolverEstudianteUseCase } from './ResolverEstudiante';
 import { ReservarRacionUseCase } from './ReservarRacion';
 import { ConsultarBecaUseCase } from './ConsultarBeca';
 import { AsignarBecaUseCase, CrearEstudianteUseCase } from './GestionarEstudiantes';
 import { ListarReservasAnaliticasUseCase } from './ConsultasAnaliticas';
 import { ListarReservasEstudianteUseCase, ObtenerReservaUseCase } from './ConsultasReserva';
-import { ConsultarAsistenciaUseCase, ListarAsistenciaAnaliticaUseCase, MarcarAsistenciaUseCase } from './MarcarAsistencia';
+import {
+  ConsultarAsistenciaUseCase, ConsultarLugarComedorUseCase, ListarAsistenciaAnaliticaUseCase, MarcarAsistenciaUseCase,
+} from './MarcarAsistencia';
 import { Asistencia } from '../entities/Asistencia';
 import { ReglaDeNegocioError } from '../entities/errores';
 
@@ -35,6 +37,11 @@ class ReservasEnMemoria extends ReservaRepo {
   async findByEstudiante(id: string) { return this.datos.filter(r => r.estudianteId === id); }
   async listarTodas() { return this.datos; }
 }
+/** Ids deterministas con forma de UUID (el resolvedor de estudiantes distingue UUID de matrícula). */
+class IdsSecuenciales extends GeneradorIds {
+  private n = 0;
+  nuevo() { return `00000000-0000-4000-8000-${String(++this.n).padStart(12, '0')}`; }
+}
 class BusEspia extends EventBusPort {
   eventos: any[] = [];
   async publish(_t: string, p: any) { this.eventos.push(p); }
@@ -42,8 +49,9 @@ class BusEspia extends EventBusPort {
 
 const armar = () => {
   const estudiantes = new EstudiantesEnMemoria(), becas = new BecasEnMemoria(), reservas = new ReservasEnMemoria(), bus = new BusEspia();
+  const ids = new IdsSecuenciales();
   const resolver = new ResolverEstudianteUseCase(estudiantes);
-  return { estudiantes, becas, reservas, bus, resolver, reservar: new ReservarRacionUseCase(estudiantes, reservas, bus, resolver, becas) };
+  return { estudiantes, becas, reservas, bus, resolver, ids, reservar: new ReservarRacionUseCase(estudiantes, reservas, bus, resolver, becas, ids) };
 };
 const pedido = (estudianteId: string, fecha = '2026-11-09') => ({ estudianteId, menuId: 'm1', platoId: 'p1', fecha, turno: Turno.ALMUERZO });
 
@@ -52,6 +60,7 @@ describe('ReservarRacion', () => {
     const { reservar, estudiantes, bus } = armar();
     const r = await reservar.execute(pedido('juan.perez'));
     expect(r.estado).toBe('pendiente');
+    expect(r).not.toBeInstanceOf(Reserva);                       // sale un modelo de datos, no la entidad
     expect((await estudiantes.findByRegistro('juan.perez'))?.email).toBe('juan.perez@uagrm.edu.bo');
     expect(bus.eventos.map(e => e.type)).toEqual(['ReservaCreadaEvent']);
   });
@@ -64,8 +73,9 @@ describe('ReservarRacion', () => {
     await expect(reservar.execute(pedido('becaria'))).rejects.toBeInstanceOf(ReglaDeNegocioError);
     await expect(reservar.execute(pedido('becaria'))).rejects.toThrow('Con beca solo puedes reservar una ración por día');
     await expect(reservar.execute(pedido('becaria', '2026-11-10'))).resolves.toBeDefined();   // otro día sí
-    primera.cancelar();
-    await reservas.save(primera);
+    const guardada = await reservas.findById(primera.id);
+    guardada.cancelar();
+    await reservas.save(guardada);
     await expect(reservar.execute(pedido('becaria'))).resolves.toBeDefined();                // cancelada: el día vuelve a estar libre
   });
 
@@ -113,7 +123,7 @@ describe('ReservarRacion', () => {
 describe('Estudiantes y becas', () => {
   it('crear es idempotente por matrícula', async () => {
     const { estudiantes } = armar();
-    const crear = new CrearEstudianteUseCase(estudiantes);
+    const crear = new CrearEstudianteUseCase(estudiantes, new IdsSecuenciales());
     const a = await crear.execute({ registroUniv: '220001', nombre: 'Ana', email: 'a@x' });
     const b = await crear.execute({ registroUniv: '220001', nombre: 'Otro', email: 'o@x' });
     expect(b.id).toBe(a.id);
@@ -122,8 +132,8 @@ describe('Estudiantes y becas', () => {
 
   it('la beca toma el cupo según su tipo y se consulta por matrícula o por ID', async () => {
     const { estudiantes, becas, resolver } = armar();
-    const est = await new CrearEstudianteUseCase(estudiantes).execute({ registroUniv: '220001', nombre: 'Ana', email: 'a@x' });
-    const beca = await new AsignarBecaUseCase(becas, resolver).execute('220001', { tipo: 'media' });
+    const est = await new CrearEstudianteUseCase(estudiantes, new IdsSecuenciales()).execute({ registroUniv: '220001', nombre: 'Ana', email: 'a@x' });
+    const beca = await new AsignarBecaUseCase(becas, resolver, new IdsSecuenciales()).execute('220001', { tipo: 'media' });
     expect(beca.cupoRacionesMes).toBe(30);
     const consultar = new ConsultarBecaUseCase(becas, resolver);
     expect(await consultar.execute('220001')).toMatchObject({ tieneBeca: true, tipo: 'media', cubreHoy: true });
@@ -133,14 +143,14 @@ describe('Estudiantes y becas', () => {
 
   it('asignar beca a alguien que no existe es un error de "no encontrado"', async () => {
     const { becas, resolver } = armar();
-    await expect(new AsignarBecaUseCase(becas, resolver).execute('nadie', { tipo: 'completa' })).rejects.toBeInstanceOf(NoEncontradoError);
+    await expect(new AsignarBecaUseCase(becas, resolver, new IdsSecuenciales()).execute('nadie', { tipo: 'completa' })).rejects.toBeInstanceOf(NoEncontradoError);
   });
 });
 
 describe('Consultas para reportes', () => {
   it('une cada reserva con los datos del estudiante', async () => {
     const { reservar, estudiantes, reservas } = armar();
-    await new CrearEstudianteUseCase(estudiantes).execute({ registroUniv: '220001', nombre: 'Ana Rojas', email: 'a@x' });
+    await new CrearEstudianteUseCase(estudiantes, new IdsSecuenciales()).execute({ registroUniv: '220001', nombre: 'Ana Rojas', email: 'a@x' });
     await reservar.execute(pedido('220001'));
     const filas = await new ListarReservasAnaliticasUseCase(reservas, estudiantes).execute();
     expect(filas).toHaveLength(1);
@@ -160,7 +170,7 @@ class AsistenciasEnMemoria extends AsistenciaRepo {
 const COMEDOR = { lat: -17.80497, lon: -63.15052, radioM: 1000 };
 const armarAsistencia = () => {
   const repo = new AsistenciasEnMemoria();
-  return { repo, marcar: new MarcarAsistenciaUseCase(repo, COMEDOR), consultar: new ConsultarAsistenciaUseCase(repo) };
+  return { repo, marcar: new MarcarAsistenciaUseCase(repo, COMEDOR, new IdsSecuenciales()), consultar: new ConsultarAsistenciaUseCase(repo) };
 };
 const enElComedor = { lat: -17.80501, lon: -63.15049 };
 const lejos = { lat: -17.7833, lon: -63.1821 };            // ~4 km
@@ -214,6 +224,10 @@ describe('MarcarAsistencia', () => {
     await expect(marcar.execute({ usuario: '', tipo: 'entrada', ...enElComedor })).rejects.toThrow('usuario');
     await expect(marcar.execute({ usuario: 'x', tipo: 'otra' as any, ...enElComedor })).rejects.toThrow('entrada');
     await expect(marcar.execute({ usuario: 'x', tipo: 'entrada', lat: 999, lon: 0 })).rejects.toThrow('ubicación');
+  });
+
+  it('el lugar del comedor sale como datos planos', async () => {
+    expect(await new ConsultarLugarComedorUseCase(COMEDOR).execute()).toEqual({ lat: -17.80497, lon: -63.15052, radioM: 1000 });
   });
 
   it('la distancia se calcula en metros', () => {

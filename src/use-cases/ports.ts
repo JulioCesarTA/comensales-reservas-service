@@ -47,3 +47,8 @@ export abstract class EventBusPort {
 export abstract class QrGeneratorPort {
   abstract generar(payload: object): Promise<string>;
 }
+
+/** Fuente de identificadores únicos para las entidades nuevas (en producción, UUID v4). */
+export abstract class GeneradorIds {
+  abstract nuevo(): string;
+}

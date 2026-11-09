@@ -1,24 +1,23 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { BecaRepo } from '../../use-cases/ports';
 import { Beca, TipoBeca } from '../../entities/Beca';
-import { BecaOrm } from '../../infrastructure/database/postgres/beca.entity';
+import { AlmacenBecas, FilaBeca } from './almacenes';
 
 @Injectable()
 export class BecaGateway extends BecaRepo {
-  constructor(@InjectRepository(BecaOrm) private readonly repo: Repository<BecaOrm>) { super(); }
+  constructor(private readonly almacen: AlmacenBecas) { super(); }
+
+  private toDomain(o: FilaBeca): Beca {
+    return new Beca(o.id, o.estudianteId, o.tipo as TipoBeca, o.cupoRacionesMes,
+      o.racionesUsadasMes, o.vigenteDesde, o.vigenteHasta);
+  }
+
   async findActivaByEstudiante(estId: string): Promise<Beca | null> {
-    const hoy = new Date();
-    const o = await this.repo.createQueryBuilder('b')
-      .where('b.estudianteId = :id', { id: estId })
-      .andWhere('b.vigenteDesde <= :hoy AND b.vigenteHasta >= :hoy', { hoy })
-      .getOne();
-    return o ? new Beca(o.id, o.estudianteId, o.tipo as TipoBeca, o.cupoRacionesMes,
-      o.racionesUsadasMes, o.vigenteDesde, o.vigenteHasta) : null;
+    const o = await this.almacen.vigenteDe(estId, new Date());
+    return o ? this.toDomain(o) : null;
   }
   async save(b: Beca): Promise<Beca> {
-    await this.repo.save({
+    await this.almacen.guardar({
       id: b.id, estudianteId: b.estudianteId, tipo: b.tipo,
       cupoRacionesMes: b.cupoRacionesMes, racionesUsadasMes: b.racionesUsadasMes,
       vigenteDesde: b.vigenteDesde, vigenteHasta: b.vigenteHasta,
@@ -26,8 +25,7 @@ export class BecaGateway extends BecaRepo {
     return b;
   }
   async listarTodas(): Promise<Beca[]> {
-    const rows = await this.repo.find();
-    return rows.map(o => new Beca(o.id, o.estudianteId, o.tipo as TipoBeca,
-      o.cupoRacionesMes, o.racionesUsadasMes, o.vigenteDesde, o.vigenteHasta));
+    const rows = await this.almacen.todas();
+    return rows.map(o => this.toDomain(o));
   }
 }

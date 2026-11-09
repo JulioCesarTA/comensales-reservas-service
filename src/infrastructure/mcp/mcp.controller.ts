@@ -3,6 +3,8 @@ import type { Response } from 'express';
 import { ConsultarBecaUseCase } from '../../use-cases/ConsultarBeca';
 import { ReservarRacionUseCase } from '../../use-cases/ReservarRacion';
 import { Turno } from '../../entities/Turno';
+import { presentarConsultaBeca } from '../../interface-adapters/presenters/beca.presenter';
+import { presentarReservaCreada } from '../../interface-adapters/presenters/reserva.presenter';
 
 /**
  * Servidor MCP (Model Context Protocol) por HTTP: JSON-RPC 2.0 en POST /mcp, sin estado.
@@ -33,7 +35,7 @@ export class McpController {
       consultar_beca: {
         description: 'Beca comedor de un estudiante (por UUID o matrícula): tipo, cupo del mes, raciones usadas y si cubre hoy.',
         inputSchema: { type: 'object', properties: { estudianteId: { type: 'string' } }, required: ['estudianteId'] },
-        accion: (a) => beca.execute(texto(a, 'estudianteId')),
+        accion: async (a) => presentarConsultaBeca(await beca.execute(texto(a, 'estudianteId'))),
       },
       crear_reserva: {
         description: 'Crea una reserva en estado pendiente para un plato de un menú (paso 1 de la Saga 1).',
@@ -50,7 +52,7 @@ export class McpController {
             estudianteId: texto(a, 'estudianteId'), menuId: texto(a, 'menuId'), platoId: texto(a, 'platoId'),
             fecha: texto(a, 'fecha'), turno: texto(a, 'turno').toUpperCase() as Turno,
           });
-          return { id: r.id, estado: r.estado };
+          return presentarReservaCreada(r);
         },
       },
     };
