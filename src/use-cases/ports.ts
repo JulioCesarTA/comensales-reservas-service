@@ -1,6 +1,7 @@
 import { Estudiante } from '../entities/Estudiante';
 import { Beca } from '../entities/Beca';
 import { Reserva } from '../entities/Reserva';
+import { Asistencia } from '../entities/Asistencia';
 
 // Puertos: lo que los casos de uso necesitan del mundo exterior. Los implementan los gateways y la infraestructura.
 
@@ -22,6 +23,21 @@ export abstract class ReservaRepo {
   abstract findById(id: string): Promise<Reserva | null>;
   abstract findByEstudiante(estId: string): Promise<Reserva[]>;
   abstract listarTodas(): Promise<Reserva[]>;
+}
+
+export abstract class AsistenciaRepo {
+  abstract save(a: Asistencia): Promise<Asistencia>;
+  /** La marca más reciente de esa persona (para saber si tiene la entrada abierta). */
+  abstract ultimaDe(usuario: string): Promise<Asistencia | null>;
+  abstract listarDe(usuario: string, limite: number): Promise<Asistencia[]>;
+  abstract listarTodas(): Promise<Asistencia[]>;
+}
+
+/** Dónde está el comedor y hasta qué distancia se acepta una marca. Se configura con variables de entorno. */
+export abstract class UbicacionComedor {
+  abstract readonly lat: number;
+  abstract readonly lon: number;
+  abstract readonly radioM: number;
 }
 
 export abstract class EventBusPort {

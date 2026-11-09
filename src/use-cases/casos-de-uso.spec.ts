@@ -4,13 +4,15 @@ import { Estudiante } from '../entities/Estudiante';
 import { Reserva } from '../entities/Reserva';
 import { Turno } from '../entities/Turno';
 import { NoEncontradoError } from '../entities/errores';
-import { BecaRepo, EstudianteRepo, EventBusPort, ReservaRepo } from './ports';
+import { AsistenciaRepo, BecaRepo, EstudianteRepo, EventBusPort, ReservaRepo } from './ports';
 import { ResolverEstudianteUseCase } from './ResolverEstudiante';
 import { ReservarRacionUseCase } from './ReservarRacion';
 import { ConsultarBecaUseCase } from './ConsultarBeca';
 import { AsignarBecaUseCase, CrearEstudianteUseCase } from './GestionarEstudiantes';
 import { ListarReservasAnaliticasUseCase } from './ConsultasAnaliticas';
 import { ListarReservasEstudianteUseCase, ObtenerReservaUseCase } from './ConsultasReserva';
+import { ConsultarAsistenciaUseCase, ListarAsistenciaAnaliticaUseCase, MarcarAsistenciaUseCase } from './MarcarAsistencia';
+import { Asistencia } from '../entities/Asistencia';
 import { ReglaDeNegocioError } from '../entities/errores';
 
 class EstudiantesEnMemoria extends EstudianteRepo {
@@ -143,5 +145,90 @@ describe('Consultas para reportes', () => {
     const filas = await new ListarReservasAnaliticasUseCase(reservas, estudiantes).execute();
     expect(filas).toHaveLength(1);
     expect(filas[0]).toMatchObject({ fecha: '2026-11-09', turno: 'ALMUERZO', plato: 'p1', matricula: '220001', estudiante: 'Ana Rojas' });
+  });
+});
+
+// ----------------------------- asistencia del personal (GPS) -----------------------------
+
+class AsistenciasEnMemoria extends AsistenciaRepo {
+  datos: Asistencia[] = [];
+  async save(a: Asistencia) { this.datos.unshift(a); return a; }
+  async ultimaDe(u: string) { return this.datos.find(x => x.usuario === u) ?? null; }
+  async listarDe(u: string, n: number) { return this.datos.filter(x => x.usuario === u).slice(0, n); }
+  async listarTodas() { return this.datos; }
+}
+const COMEDOR = { lat: -17.80497, lon: -63.15052, radioM: 1000 };
+const armarAsistencia = () => {
+  const repo = new AsistenciasEnMemoria();
+  return { repo, marcar: new MarcarAsistenciaUseCase(repo, COMEDOR), consultar: new ConsultarAsistenciaUseCase(repo) };
+};
+const enElComedor = { lat: -17.80501, lon: -63.15049 };
+const lejos = { lat: -17.7833, lon: -63.1821 };            // ~4 km
+
+describe('MarcarAsistencia', () => {
+  it('marca la entrada dentro del comedor y la cuenta como presente', async () => {
+    const { marcar, consultar } = armarAsistencia();
+    const a = await marcar.execute({ usuario: 'caja.demo', rol: 'servicio_caja', tipo: 'entrada', ...enElComedor });
+    expect(a.dentro).toBe(true);
+    expect(a.distanciaM).toBeLessThan(50);
+    const estado = await consultar.execute('caja.demo');
+    expect(estado.presente).toBe(true);
+    expect(estado.marcas).toHaveLength(1);
+  });
+
+  it('una marca lejos del comedor se guarda pero queda señalada para revisar', async () => {
+    const { marcar } = armarAsistencia();
+    const a = await marcar.execute({ usuario: 'admin.comedor', tipo: 'entrada', ...lejos });
+    expect(a.dentro).toBe(false);
+    expect(a.distanciaM).toBeGreaterThan(1000);
+    expect(a.sospechosa).toBe(true);
+  });
+
+  it('una ubicación simulada queda señalada aunque esté dentro del radio', async () => {
+    const { marcar } = armarAsistencia();
+    const a = await marcar.execute({ usuario: 'cocina', tipo: 'entrada', ...enElComedor, simulada: true });
+    expect(a.dentro).toBe(true);
+    expect(a.sospechosa).toBe(true);
+  });
+
+  it('no se marca dos veces seguidas lo mismo', async () => {
+    const { marcar } = armarAsistencia();
+    await marcar.execute({ usuario: 'caja.demo', tipo: 'entrada', ...enElComedor });
+    await expect(marcar.execute({ usuario: 'caja.demo', tipo: 'entrada', ...enElComedor }))
+      .rejects.toThrow('marca la salida primero');
+    await expect(marcar.execute({ usuario: 'otro', tipo: 'salida', ...enElComedor }))
+      .rejects.toThrow('No hay una entrada abierta');
+  });
+
+  it('entrada y salida cierran el turno', async () => {
+    const { marcar, consultar } = armarAsistencia();
+    await marcar.execute({ usuario: 'caja.demo', tipo: 'entrada', ...enElComedor });
+    await marcar.execute({ usuario: 'caja.demo', tipo: 'salida', ...enElComedor });
+    const estado = await consultar.execute('caja.demo');
+    expect(estado.presente).toBe(false);
+    expect(estado.marcas.map(m => m.tipo)).toEqual(['salida', 'entrada']);
+  });
+
+  it('rechaza datos inválidos', async () => {
+    const { marcar } = armarAsistencia();
+    await expect(marcar.execute({ usuario: '', tipo: 'entrada', ...enElComedor })).rejects.toThrow('usuario');
+    await expect(marcar.execute({ usuario: 'x', tipo: 'otra' as any, ...enElComedor })).rejects.toThrow('entrada');
+    await expect(marcar.execute({ usuario: 'x', tipo: 'entrada', lat: 999, lon: 0 })).rejects.toThrow('ubicación');
+  });
+
+  it('la distancia se calcula en metros', () => {
+    expect(Asistencia.distancia(-17.80497, -63.15052, -17.80497, -63.15052)).toBe(0);
+    const d = Asistencia.distancia(-17.80497, -63.15052, -17.81397, -63.15052);   // 0,009° de latitud ≈ 1 km
+    expect(d).toBeGreaterThan(950);
+    expect(d).toBeLessThan(1050);
+  });
+
+  it('la lectura para reportes trae las columnas que espera el catálogo', async () => {
+    const { marcar, repo } = armarAsistencia();
+    await marcar.execute({ usuario: 'caja.demo', rol: 'servicio_caja', tipo: 'entrada', ...lejos });
+    const filas = await new ListarAsistenciaAnaliticaUseCase(repo).execute();
+    expect(Object.keys(filas[0]).sort()).toEqual(
+      ['distancia', 'fecha', 'hora', 'id', 'revisar', 'rol', 'tipo', 'ubicacion', 'usuario']);
+    expect(filas[0]).toMatchObject({ tipo: 'Entrada', ubicacion: 'Fuera del comedor', revisar: 'Sí' });
   });
 });

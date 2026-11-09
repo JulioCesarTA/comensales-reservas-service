@@ -5,9 +5,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EstudianteOrm } from '../database/postgres/estudiante.entity';
 import { BecaOrm } from '../database/postgres/beca.entity';
 import { ReservaOrm } from '../database/postgres/reserva.entity';
+import { AsistenciaOrm } from '../database/postgres/asistencia.entity';
 import { EstudianteGateway } from '../../interface-adapters/gateways/estudiante.gateway';
 import { BecaGateway } from '../../interface-adapters/gateways/beca.gateway';
 import { ReservaGateway } from '../../interface-adapters/gateways/reserva.gateway';
+import { AsistenciaGateway, UbicacionComedorEnv } from '../../interface-adapters/gateways/asistencia.gateway';
 import { ErroresNegocioFilter } from '../../interface-adapters/filters/errores-negocio.filter';
 import { SnsBus } from '../messaging/sns.bus';
 import { QrGenerator } from '../qr/qr.generator';
@@ -22,9 +24,10 @@ import {
   AsignarBecaUseCase, CrearEstudianteUseCase, ListarEstudiantesUseCase, ObtenerEstudianteUseCase,
 } from '../../use-cases/GestionarEstudiantes';
 import { ListarBecasAnaliticasUseCase, ListarReservasAnaliticasUseCase } from '../../use-cases/ConsultasAnaliticas';
-import { EstudianteRepo, BecaRepo, ReservaRepo, EventBusPort, QrGeneratorPort } from '../../use-cases/ports';
+import { EstudianteRepo, BecaRepo, ReservaRepo, EventBusPort, QrGeneratorPort, AsistenciaRepo, UbicacionComedor } from '../../use-cases/ports';
 import { ReservasController } from '../../interface-adapters/controllers/reservas.controller';
 import { EstudiantesController } from '../../interface-adapters/controllers/estudiantes.controller';
+import { AsistenciaController } from '../../interface-adapters/controllers/asistencia.controller';
 import { AnaliticaController } from '../../interface-adapters/controllers/analitica.controller';
 
 // Los casos de uso no conocen a Nest: aquí (la capa más externa) se les entregan sus puertos.
@@ -40,14 +43,16 @@ const casoDeUso = <T>(clase: new (...args: any[]) => T, ...inject: any[]) =>
       entities: [EstudianteOrm, BecaOrm, ReservaOrm],
       synchronize: true,
     }),
-    TypeOrmModule.forFeature([EstudianteOrm, BecaOrm, ReservaOrm]),
+    TypeOrmModule.forFeature([EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm]),
   ],
-  controllers: [ReservasController, EstudiantesController, AnaliticaController],
+  controllers: [ReservasController, EstudiantesController, AnaliticaController, AsistenciaController],
   providers: [
-    EstudianteGateway, BecaGateway, ReservaGateway, SnsBus, QrGenerator,
+    EstudianteGateway, BecaGateway, ReservaGateway, AsistenciaGateway, UbicacionComedorEnv, SnsBus, QrGenerator,
     { provide: EstudianteRepo, useExisting: EstudianteGateway },
     { provide: BecaRepo, useExisting: BecaGateway },
     { provide: ReservaRepo, useExisting: ReservaGateway },
+    { provide: AsistenciaRepo, useExisting: AsistenciaGateway },
+    { provide: UbicacionComedor, useExisting: UbicacionComedorEnv },
     { provide: EventBusPort, useExisting: SnsBus },
     { provide: QrGeneratorPort, useExisting: QrGenerator },
     { provide: APP_FILTER, useClass: ErroresNegocioFilter },
