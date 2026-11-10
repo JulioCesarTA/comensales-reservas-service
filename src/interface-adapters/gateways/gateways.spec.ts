@@ -1,3 +1,5 @@
+import { LugarComedorGateway } from './lugar-comedor.gateway';
+import { AlmacenLugarComedor, FilaLugarComedor, LugarInicialComedor } from './almacenes';
 // Los gateways traducen entidad <-> fila sin saber de TypeORM: se prueban con almacenes en memoria.
 import { Reserva } from '../../entities/Reserva';
 import { Turno } from '../../entities/Turno';
@@ -75,5 +77,27 @@ describe('AsistenciaGateway', () => {
     expect(a.lat).toBe(-17.8);
     expect(a.marcadaEn).toBeInstanceOf(Date);
     expect(await g.listarTodas()).toHaveLength(1);
+  });
+});
+
+describe('LugarComedorGateway', () => {
+  class LugarEnMemoria extends AlmacenLugarComedor {
+    fila: FilaLugarComedor | null = null;
+    async leer() { return this.fila; }
+    async guardar(f: FilaLugarComedor) { this.fila = f; }
+  }
+  const inicial = { lat: -17.8, lon: -63.1, radioM: 1000 } as LugarInicialComedor;
+
+  it('sin nada guardado usa la ubicación de la configuración', async () => {
+    const g = new LugarComedorGateway(new LugarEnMemoria(), inicial);
+    expect(await g.obtener()).toEqual({ lat: -17.8, lon: -63.1, radioM: 1000, actualizadoPor: null, actualizadoEn: null });
+  });
+
+  it('lo que guarda el administrador se lee como números (Postgres devuelve double como texto)', async () => {
+    const almacen = new LugarEnMemoria();
+    const g = new LugarComedorGateway(almacen, inicial);
+    await g.guardar({ lat: -17.7, lon: -63.2, radioM: 300, actualizadoPor: 'admin.comedor' });
+    almacen.fila = { ...almacen.fila!, lat: '-17.7', lon: '-63.2' };
+    expect(await g.obtener()).toMatchObject({ lat: -17.7, lon: -63.2, radioM: 300, actualizadoPor: 'admin.comedor' });
   });
 });

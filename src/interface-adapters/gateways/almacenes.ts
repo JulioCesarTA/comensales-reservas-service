@@ -70,6 +70,28 @@ export interface FilaAsistencia {
   registradaEn: Date | string;
 }
 
+export interface FilaLugarComedor {
+  id: string;
+  lat: number | string;
+  lon: number | string;
+  radioM: number;
+  actualizadoPor: string | null;
+  actualizadoEn: Date | string;
+}
+
+/** Ubicación con la que arranca el comedor mientras el administrador no guarde otra (la da la configuración). */
+export abstract class LugarInicialComedor {
+  abstract readonly lat: number;
+  abstract readonly lon: number;
+  abstract readonly radioM: number;
+}
+
+/** La fila única con la ubicación del comedor (tabla `lugar_comedor`). */
+export abstract class AlmacenLugarComedor {
+  abstract leer(id: string): Promise<FilaLugarComedor | null>;
+  abstract guardar(fila: FilaLugarComedor): Promise<void>;
+}
+
 export abstract class AlmacenAsistencias {
   abstract guardar(fila: FilaAsistencia): Promise<void>;
   /** La marca más reciente de esa persona. */

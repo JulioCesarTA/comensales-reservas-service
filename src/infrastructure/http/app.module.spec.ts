@@ -9,12 +9,13 @@ import { AsistenciaOrm } from '../database/postgres/asistencia.entity';
 import { BecaOrm } from '../database/postgres/beca.entity';
 import { EstudianteOrm } from '../database/postgres/estudiante.entity';
 import { ReservaOrm } from '../database/postgres/reserva.entity';
+import { LugarComedorOrm } from '../database/postgres/lugar-comedor.entity';
 
 describe('AppModule: inyección de dependencias', () => {
   it('todos los controladores se pueden construir con sus casos de uso', async () => {
     const controllers: any[] = Reflect.getMetadata('controllers', AppModule);
     const providers: any[] = Reflect.getMetadata('providers', AppModule);
-    const repos = [EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm].map(orm => ({
+    const repos = [EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm, LugarComedorOrm].map(orm => ({
       provide: getRepositoryToken(orm), useValue: {},
     }));
 

@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
-  AlmacenAsistencias, AlmacenBecas, AlmacenEstudiantes, AlmacenReservas,
-  FilaAsistencia, FilaBeca, FilaEstudiante, FilaReserva,
+  AlmacenAsistencias, AlmacenBecas, AlmacenEstudiantes, AlmacenLugarComedor, AlmacenReservas,
+  FilaAsistencia, FilaBeca, FilaEstudiante, FilaLugarComedor, FilaReserva,
 } from '../../../interface-adapters/gateways/almacenes';
+import { LugarComedorOrm } from './lugar-comedor.entity';
 import { EstudianteOrm } from './estudiante.entity';
 import { BecaOrm } from './beca.entity';
 import { ReservaOrm } from './reserva.entity';
@@ -45,6 +46,14 @@ export class AlmacenReservasTypeOrm extends AlmacenReservas {
   // `fecha` llega como texto AAAA-MM-DD (columna `date`), igual que antes de separar el almacén.
   async guardar(fila: FilaReserva): Promise<void> { await this.repo.save(fila as any); }
   todas(): Promise<FilaReserva[]> { return this.repo.find({ order: { createdAt: 'ASC' } }); }
+}
+
+@Injectable()
+export class AlmacenLugarComedorTypeOrm extends AlmacenLugarComedor {
+  constructor(@InjectRepository(LugarComedorOrm) private readonly repo: Repository<LugarComedorOrm>) { super(); }
+
+  leer(id: string): Promise<FilaLugarComedor | null> { return this.repo.findOneBy({ id }); }
+  async guardar(fila: FilaLugarComedor): Promise<void> { await this.repo.save(fila as LugarComedorOrm); }
 }
 
 @Injectable()

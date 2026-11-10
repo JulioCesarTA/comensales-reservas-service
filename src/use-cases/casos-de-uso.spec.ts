@@ -12,8 +12,11 @@ import { AsignarBecaUseCase, CrearEstudianteUseCase } from './GestionarEstudiant
 import { ListarReservasAnaliticasUseCase } from './ConsultasAnaliticas';
 import { ListarReservasEstudianteUseCase, ObtenerReservaUseCase } from './ConsultasReserva';
 import {
-  ConsultarAsistenciaUseCase, ConsultarLugarComedorUseCase, ListarAsistenciaAnaliticaUseCase, MarcarAsistenciaUseCase,
+  ConsultarAsistenciaUseCase, ConsultarLugarComedorUseCase, GuardarLugarComedorUseCase, ListarAsistenciaAnaliticaUseCase,
+  MarcarAsistenciaUseCase,
 } from './MarcarAsistencia';
+import { LugarComedor, UbicacionComedor } from './ports';
+import { PermisoDenegadoError } from '../entities/errores';
 import { Asistencia } from '../entities/Asistencia';
 import { ReglaDeNegocioError } from '../entities/errores';
 
@@ -167,10 +170,18 @@ class AsistenciasEnMemoria extends AsistenciaRepo {
   async listarDe(u: string, n: number) { return this.datos.filter(x => x.usuario === u).slice(0, n); }
   async listarTodas() { return this.datos; }
 }
-const COMEDOR = { lat: -17.80497, lon: -63.15052, radioM: 1000 };
+class LugarEnMemoria extends UbicacionComedor {
+  lugar: LugarComedor = { lat: -17.80497, lon: -63.15052, radioM: 1000, actualizadoPor: null, actualizadoEn: null };
+  async obtener() { return { ...this.lugar }; }
+  async guardar(l: LugarComedor) { this.lugar = { ...l }; return { ...l }; }
+}
 const armarAsistencia = () => {
   const repo = new AsistenciasEnMemoria();
-  return { repo, marcar: new MarcarAsistenciaUseCase(repo, COMEDOR, new IdsSecuenciales()), consultar: new ConsultarAsistenciaUseCase(repo) };
+  const comedor = new LugarEnMemoria();
+  return {
+    repo, comedor, marcar: new MarcarAsistenciaUseCase(repo, comedor, new IdsSecuenciales()),
+    consultar: new ConsultarAsistenciaUseCase(repo), guardarLugar: new GuardarLugarComedorUseCase(comedor),
+  };
 };
 const enElComedor = { lat: -17.80501, lon: -63.15049 };
 const lejos = { lat: -17.7833, lon: -63.1821 };            // ~4 km
@@ -186,12 +197,30 @@ describe('MarcarAsistencia', () => {
     expect(estado.marcas).toHaveLength(1);
   });
 
-  it('una marca lejos del comedor se guarda pero queda señalada para revisar', async () => {
-    const { marcar } = armarAsistencia();
-    const a = await marcar.execute({ usuario: 'admin.comedor', tipo: 'entrada', ...lejos });
-    expect(a.dentro).toBe(false);
-    expect(a.distanciaM).toBeGreaterThan(1000);
-    expect(a.sospechosa).toBe(true);
+  it('fuera del radio la marca NO se registra y dice a qué distancia está', async () => {
+    const { marcar, repo } = armarAsistencia();
+    await expect(marcar.execute({ usuario: 'admin.comedor', tipo: 'entrada', ...lejos }))
+      .rejects.toThrow(/Estás a \d,\d km del comedor: solo se puede marcar dentro de 1,0 km/);
+    expect(repo.datos).toHaveLength(0);
+  });
+
+  it('el radio y el lugar que guarda el administrador son los que valen al marcar', async () => {
+    const { marcar, guardarLugar } = armarAsistencia();
+    await guardarLugar.execute({ usuario: 'admin.comedor', roles: ['administrador'], ...lejos, radioM: 200 });
+    const a = await marcar.execute({ usuario: 'caja.demo', tipo: 'entrada', lat: lejos.lat + 0.001, lon: lejos.lon });
+    expect(a.distanciaM).toBeLessThan(200);
+    await expect(marcar.execute({ usuario: 'otro', tipo: 'entrada', ...enElComedor })).rejects.toThrow('dentro de 200 m');
+  });
+
+  it('solo el administrador cambia la ubicación, con datos válidos', async () => {
+    const { guardarLugar, comedor } = armarAsistencia();
+    await expect(guardarLugar.execute({ usuario: 'caja.demo', roles: ['servicio_caja'], ...lejos }))
+      .rejects.toBeInstanceOf(PermisoDenegadoError);
+    await expect(guardarLugar.execute({ usuario: 'a', roles: ['administrador'], lat: 120, lon: 0 })).rejects.toThrow('latitud');
+    await expect(guardarLugar.execute({ usuario: 'a', roles: ['administrador'], ...lejos, radioM: 10 })).rejects.toThrow('radio');
+    const r = await guardarLugar.execute({ usuario: 'admin.comedor', roles: ['administrador'], ...lejos });
+    expect(r).toMatchObject({ ...lejos, radioM: 1000, actualizadoPor: 'admin.comedor' });
+    expect(comedor.lugar.lat).toBe(lejos.lat);
   });
 
   it('una ubicación simulada queda señalada aunque esté dentro del radio', async () => {
@@ -227,7 +256,8 @@ describe('MarcarAsistencia', () => {
   });
 
   it('el lugar del comedor sale como datos planos', async () => {
-    expect(await new ConsultarLugarComedorUseCase(COMEDOR).execute()).toEqual({ lat: -17.80497, lon: -63.15052, radioM: 1000 });
+    expect(await new ConsultarLugarComedorUseCase(new LugarEnMemoria()).execute())
+      .toEqual({ lat: -17.80497, lon: -63.15052, radioM: 1000, actualizadoPor: null, actualizadoEn: null });
   });
 
   it('la distancia se calcula en metros', () => {
@@ -239,10 +269,10 @@ describe('MarcarAsistencia', () => {
 
   it('la lectura para reportes trae las columnas que espera el catálogo', async () => {
     const { marcar, repo } = armarAsistencia();
-    await marcar.execute({ usuario: 'caja.demo', rol: 'servicio_caja', tipo: 'entrada', ...lejos });
+    await marcar.execute({ usuario: 'caja.demo', rol: 'servicio_caja', tipo: 'entrada', ...enElComedor, simulada: true });
     const filas = await new ListarAsistenciaAnaliticaUseCase(repo).execute();
     expect(Object.keys(filas[0]).sort()).toEqual(
       ['distancia', 'fecha', 'hora', 'id', 'revisar', 'rol', 'tipo', 'ubicacion', 'usuario']);
-    expect(filas[0]).toMatchObject({ tipo: 'Entrada', ubicacion: 'Fuera del comedor', revisar: 'Sí' });
+    expect(filas[0]).toMatchObject({ tipo: 'Entrada', ubicacion: 'En el comedor', revisar: 'Sí' });
   });
 });

@@ -33,11 +33,20 @@ export abstract class AsistenciaRepo {
   abstract listarTodas(): Promise<Asistencia[]>;
 }
 
-/** Dónde está el comedor y hasta qué distancia se acepta una marca. Se configura con variables de entorno. */
+/** Dónde está el comedor y hasta qué distancia se acepta una marca. */
+export interface LugarComedor {
+  lat: number;
+  lon: number;
+  radioM: number;
+  /** Quién lo fijó por última vez (null: valor inicial de la configuración). */
+  actualizadoPor?: string | null;
+  actualizadoEn?: Date | null;
+}
+
+/** El lugar lo fija el administrador desde su perfil; mientras no lo haga, vale el de la configuración. */
 export abstract class UbicacionComedor {
-  abstract readonly lat: number;
-  abstract readonly lon: number;
-  abstract readonly radioM: number;
+  abstract obtener(): Promise<LugarComedor>;
+  abstract guardar(lugar: LugarComedor): Promise<LugarComedor>;
 }
 
 export abstract class EventBusPort {

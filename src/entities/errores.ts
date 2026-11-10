@@ -5,3 +5,6 @@ export class ReglaDeNegocioError extends Error {}
 
 /** Lo que se pidió no existe. */
 export class NoEncontradoError extends Error {}
+
+/** Quien lo pide no tiene el rol necesario (p. ej. solo el administrador cambia la ubicación del comedor). */
+export class PermisoDenegadoError extends Error {}

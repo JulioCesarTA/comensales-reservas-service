@@ -110,6 +110,8 @@ export interface LugarComedorSalida {
   lat: number;
   lon: number;
   radioM: number;
+  actualizadoPor: string | null;
+  actualizadoEn: Date | null;
 }
 
 export interface MarcaAsistenciaSalida {

@@ -1,7 +1,9 @@
 import { AsistenciaSalida, EstadoAsistenciaSalida, LugarComedorSalida } from '../../use-cases/salidas';
 
-/** Lugar del comedor que la app muestra antes de marcar. */
-export const presentarLugar = (c: LugarComedorSalida) => ({ lat: c.lat, lon: c.lon, radioM: c.radioM });
+/** Lugar del comedor que la app muestra antes de marcar (y quién lo fijó por última vez). */
+export const presentarLugar = (c: LugarComedorSalida) => ({
+  lat: c.lat, lon: c.lon, radioM: c.radioM, actualizadoPor: c.actualizadoPor ?? null, actualizadoEn: c.actualizadoEn ?? null,
+});
 
 /** Respuesta de POST /asistencia/marcar: `revisar` es la marca sospechosa (fuera del radio o ubicación simulada). */
 export const presentarMarca = (a: AsistenciaSalida) => ({

@@ -10,16 +10,18 @@ import { EstudianteOrm } from '../database/postgres/estudiante.entity';
 import { BecaOrm } from '../database/postgres/beca.entity';
 import { ReservaOrm } from '../database/postgres/reserva.entity';
 import { AsistenciaOrm } from '../database/postgres/asistencia.entity';
+import { LugarComedorOrm } from '../database/postgres/lugar-comedor.entity';
 import { EstudianteGateway } from '../../interface-adapters/gateways/estudiante.gateway';
 import { BecaGateway } from '../../interface-adapters/gateways/beca.gateway';
 import { ReservaGateway } from '../../interface-adapters/gateways/reserva.gateway';
 import { AsistenciaGateway } from '../../interface-adapters/gateways/asistencia.gateway';
+import { LugarComedorGateway } from '../../interface-adapters/gateways/lugar-comedor.gateway';
 import { UbicacionComedorEnv } from '../config/ubicacion-comedor.env';
 import {
-  AlmacenAsistencias, AlmacenBecas, AlmacenEstudiantes, AlmacenReservas,
+  AlmacenAsistencias, AlmacenBecas, AlmacenEstudiantes, AlmacenLugarComedor, AlmacenReservas, LugarInicialComedor,
 } from '../../interface-adapters/gateways/almacenes';
 import {
-  AlmacenAsistenciasTypeOrm, AlmacenBecasTypeOrm, AlmacenEstudiantesTypeOrm, AlmacenReservasTypeOrm,
+  AlmacenAsistenciasTypeOrm, AlmacenBecasTypeOrm, AlmacenEstudiantesTypeOrm, AlmacenLugarComedorTypeOrm, AlmacenReservasTypeOrm,
 } from '../database/postgres/almacenes.typeorm';
 import { GeneradorUuid } from '../ids/uuid.generador';
 import { ErroresNegocioFilter } from '../../interface-adapters/filters/errores-negocio.filter';
@@ -42,7 +44,8 @@ import {
 import { ReservasController } from '../../interface-adapters/controllers/reservas.controller';
 import { EstudiantesController } from '../../interface-adapters/controllers/estudiantes.controller';
 import {
-  ConsultarAsistenciaUseCase, ConsultarLugarComedorUseCase, ListarAsistenciaAnaliticaUseCase, MarcarAsistenciaUseCase,
+  ConsultarAsistenciaUseCase, ConsultarLugarComedorUseCase, GuardarLugarComedorUseCase, ListarAsistenciaAnaliticaUseCase,
+  MarcarAsistenciaUseCase,
 } from '../../use-cases/MarcarAsistencia';
 import { AsistenciaController } from '../../interface-adapters/controllers/asistencia.controller';
 import { AnaliticaController } from '../../interface-adapters/controllers/analitica.controller';
@@ -54,7 +57,7 @@ const casoDeUso = <T>(clase: new (...args: any[]) => T, ...inject: any[]) =>
 
 /** Todas las tablas del servicio. Una entidad que falte aquí compila bien pero falla con «No metadata for … was found»
  *  al primer uso: por eso la lista es una sola y una prueba la compara contra todas las clases @Entity. */
-export const ENTIDADES = [EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm];
+export const ENTIDADES = [EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm, LugarComedorOrm];
 
 @Module({
   imports: [
@@ -77,12 +80,14 @@ export const ENTIDADES = [EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm];
     { provide: AlmacenBecas, useClass: AlmacenBecasTypeOrm },
     { provide: AlmacenReservas, useClass: AlmacenReservasTypeOrm },
     { provide: AlmacenAsistencias, useClass: AlmacenAsistenciasTypeOrm },
-    EstudianteGateway, BecaGateway, ReservaGateway, AsistenciaGateway, UbicacionComedorEnv, SnsBus, QrGenerator, GeneradorUuid,
+    { provide: AlmacenLugarComedor, useClass: AlmacenLugarComedorTypeOrm },
+    { provide: LugarInicialComedor, useExisting: UbicacionComedorEnv },
+    EstudianteGateway, BecaGateway, ReservaGateway, AsistenciaGateway, LugarComedorGateway, UbicacionComedorEnv, SnsBus, QrGenerator, GeneradorUuid,
     { provide: EstudianteRepo, useExisting: EstudianteGateway },
     { provide: BecaRepo, useExisting: BecaGateway },
     { provide: ReservaRepo, useExisting: ReservaGateway },
     { provide: AsistenciaRepo, useExisting: AsistenciaGateway },
-    { provide: UbicacionComedor, useExisting: UbicacionComedorEnv },
+    { provide: UbicacionComedor, useExisting: LugarComedorGateway },
     { provide: EventBusPort, useExisting: SnsBus },
     { provide: QrGeneratorPort, useExisting: QrGenerator },
     { provide: GeneradorIds, useExisting: GeneradorUuid },
@@ -105,6 +110,7 @@ export const ENTIDADES = [EstudianteOrm, BecaOrm, ReservaOrm, AsistenciaOrm];
     casoDeUso(MarcarAsistenciaUseCase, AsistenciaRepo, UbicacionComedor, GeneradorIds),
     casoDeUso(ConsultarAsistenciaUseCase, AsistenciaRepo),
     casoDeUso(ConsultarLugarComedorUseCase, UbicacionComedor),
+    casoDeUso(GuardarLugarComedorUseCase, UbicacionComedor),
     casoDeUso(ListarAsistenciaAnaliticaUseCase, AsistenciaRepo),
   ],
 })

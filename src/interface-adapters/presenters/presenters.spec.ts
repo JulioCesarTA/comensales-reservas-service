@@ -91,7 +91,8 @@ describe('Presentador de asistencia', () => {
     const estado = { usuario: 'caja', presente: true, desde, marcas: [
       { id: 'a1', tipo: 'entrada' as const, marcadaEn: desde, distanciaM: 4000, dentro: false, simulada: false }] };
     expect(json(presentarEstadoAsistencia(estado))).toBe(json(estado));
-    expect(json(presentarLugar({ lat: 1, lon: 2, radioM: 3 }))).toBe(json({ lat: 1, lon: 2, radioM: 3 }));
+    expect(json(presentarLugar({ lat: 1, lon: 2, radioM: 3, actualizadoPor: 'admin', actualizadoEn: null })))
+      .toBe(json({ lat: 1, lon: 2, radioM: 3, actualizadoPor: 'admin', actualizadoEn: null }));
   });
 });
 
